@@ -1,6 +1,6 @@
-# rl-1
+# MADE RL-1
 
-## Description
+[Описание задачи](https://docs.google.com/document/d/1u-JiK2opyDeZ2h21nnnmuumyRyYlUL5K3Id7QTWihOU/edit)
 
 
 ## Requirements
