@@ -1,14 +1,8 @@
-import enum
 from typing import List, Tuple, Dict
 from collections import defaultdict
 
 import tqdm
 from gym.envs.toy_text import BlackjackEnv
-
-
-class Action(enum.IntEnum):
-    hit = 1
-    stick = 0
 
 
 class MonetCarloSimulation:
