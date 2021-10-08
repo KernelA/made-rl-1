@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 import random
 import numpy as np
 from collections import namedtuple
@@ -9,7 +9,7 @@ from gym.envs.toy_text import BlackjackEnv
 
 from .utils import Action, QTableDict
 
-TDLearningRes = namedtuple("TDLearningRes", ["mean_reward", "mean_step"])
+TDLearningRes = namedtuple("TDLearningRes", ["mean_reward", "mean_step", "test_mean_rewards"])
 
 
 class TDLearning(ABC):
@@ -18,6 +18,7 @@ class TDLearning(ABC):
         self._policy = policy
         self._init_qtable(q_table)
         self._q_table = q_table
+        self._is_learning = kwargs["is_learning"]
 
     def _init_qtable(self, q_table: QTableDict):
         for action in (Action.hit, Action.stick):
@@ -51,16 +52,28 @@ class TDLearning(ABC):
 
         return total_rewards, total_steps
 
-    def simulate(self, num_episodes: int) -> TDLearningRes:
+    def simulate(self, num_episodes: int, num_policy_exp: Optional[int] = None) -> TDLearningRes:
         all_reawrds = []
         step_counts = []
+        test_rewards = []
 
         for _ in tqdm.trange(num_episodes):
+            self._is_learning = True
             reward, steps = self._generate_episode()
             all_reawrds.append(reward)
             step_counts.append(steps)
 
-        return TDLearningRes(np.mean(all_reawrds), np.mean(step_counts))
+            if num_policy_exp is not None:
+                self._is_learning = False
+                exp_rewards = []
+
+                for _ in range(num_policy_exp):
+                    reward, steps = self._generate_episode()
+                    exp_rewards.append(reward)
+
+                test_rewards.append(np.mean(exp_rewards))
+
+        return TDLearningRes(np.mean(all_reawrds), np.mean(step_counts), np.array(test_rewards))
 
 
 class QLearningSimulation(TDLearning):
@@ -70,10 +83,11 @@ class QLearningSimulation(TDLearning):
         self._gamma = kwargs["gamma"]
 
     def _update_q_function(self, old_state, action: int, new_state, reward: float, new_action: int):
-        old_value = self._q_table.get_value(old_state, action)
-        greedy_reward = self._gamma * max(self._q_table.get_actions(new_state).values())
-        self._q_table.set_value(old_state, action, old_value + self._alpha *
-                                (reward + greedy_reward - old_value))
+        if self._is_learning:
+            old_value = self._q_table.get_value(old_state, action)
+            greedy_reward = self._gamma * max(self._q_table.get_actions(new_state).values())
+            self._q_table.set_value(old_state, action, old_value + self._alpha *
+                                    (reward + greedy_reward - old_value))
 
 
 class Sarsa(TDLearning):
@@ -83,10 +97,11 @@ class Sarsa(TDLearning):
         self._gamma = kwargs["gamma"]
 
     def _update_q_function(self, old_state, action: int, new_state, reward: float, new_action: int):
-        old_value = self._q_table.get_value(old_state, action)
-        greedy_reward = self._gamma * self._q_table.get_value(new_state, new_action)
-        self._q_table.set_value(old_state, action, old_value + self._alpha *
-                                (reward + greedy_reward - old_value))
+        if self._is_learning:
+            old_value = self._q_table.get_value(old_state, action)
+            greedy_reward = self._gamma * self._q_table.get_value(new_state, new_action)
+            self._q_table.set_value(old_state, action, old_value + self._alpha *
+                                    (reward + greedy_reward - old_value))
 
     def _generate_episode(self) -> Tuple[float, int]:
         state = self._env.reset()
