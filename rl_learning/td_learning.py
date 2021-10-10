@@ -53,14 +53,14 @@ class TDLearning(ABC):
         return total_rewards, total_steps
 
     def simulate(self, num_episodes: int, num_policy_exp: Optional[int] = None) -> TDLearningRes:
-        all_reawrds = []
+        all_rewards = []
         step_counts = []
         test_rewards = []
 
         for _ in tqdm.trange(num_episodes):
             self._is_learning = True
             reward, steps = self._generate_episode()
-            all_reawrds.append(reward)
+            all_rewards.append(reward)
             step_counts.append(steps)
 
             if num_policy_exp is not None:
@@ -73,7 +73,7 @@ class TDLearning(ABC):
 
                 test_rewards.append(np.mean(exp_rewards))
 
-        return TDLearningRes(np.mean(all_reawrds), np.mean(step_counts), np.array(test_rewards))
+        return TDLearningRes(np.mean(all_rewards), np.mean(step_counts), np.array(test_rewards))
 
 
 class QLearningSimulation(TDLearning):
