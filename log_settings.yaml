@@ -10,10 +10,10 @@ handlers:
   console:
     class: logging.StreamHandler
     level: DEBUG
-    formatter: default_console_thread
+    formatter: default_console_process
     stream: ext://sys.stdout
 loggers:
-  custom:
+  simulation:
     level: DEBUG
     handlers: [console]
     propagate: no

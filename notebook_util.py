@@ -1,21 +1,25 @@
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from collections import namedtuple
-from itertools import product
+from itertools import product, repeat
+from multiprocessing import Pool
+import copy
 
 from matplotlib import pyplot as plt
 import numpy as np
 import statsmodels.api as sm
 import pandas as pd
-import gym
+
 
 from rl_learning import QTableDict, EpsilonGreedyPolicy, QLearningSimulation
+from rl_learning.utils import Action
 
 
 TDLearningRes = namedtuple(
-    "TDLearningRes", ["alpha", "gamma", "mean_reward", "mean_step", "test_mean_rewards"])
+    "TDLearningRes", ["alpha", "gamma", "mean_reward", "mean_step", "test_mean_rewards", "q_function"])
 
 
-def make_grid(x_axis_values, y_axis_values, x_values, y_values, z_values, fill_value: float = 0) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def make_grid(x_axis_values, y_axis_values, x_values,
+              y_values, z_values, fill_value: float = 0) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     assert len(x_axis_values) >= len(
         set(x_values)), "Number of measurements must be greather than number of the 'x_values'"
     assert x_values.min() >= x_axis_values.min() and x_values.max() <= x_axis_values.max()
@@ -124,15 +128,37 @@ def plot_v_function(data: pd.DataFrame, title: str):
     return fig
 
 
+def simulate(td_learning_cls, alpha: float, gamma: float, env, policy, is_learning: bool,
+             action_space, total_episodes: int, total_test_episodes: int) -> TDLearningRes:
+    q_function = policy.q_function
+    td_learning = td_learning_cls(env, policy, q_function, alpha=alpha,
+                                  gamma=gamma, is_learning=is_learning, action_space=action_space)
+    td_res = td_learning.simulate(total_episodes, total_test_episodes)
+
+    return TDLearningRes(alpha, gamma, td_res.mean_reward,
+                         td_res.mean_step, td_res.test_mean_rewards, q_function)
+
+
 def generate_stat(td_learning_cls, gammas: np.ndarray, alpha: np.ndarray,
-                  total_episodes: int, total_test_episodes: int, q_function, policy, is_learning: bool) -> List[TDLearningRes]:
+                  total_episodes: int, total_test_episodes: Optional[int], policy, is_learning: bool,
+                  env, action_space, num_workers: int = 4) -> List[TDLearningRes]:
     values = []
-    for gamma_param, alpha in product(gammas, alpha):
-        td_learning = td_learning_cls(gym.make(
-            "Blackjack-v0"), policy, q_function, alpha=alpha, gamma=gamma_param, is_learning=is_learning)
-        td_res = td_learning.simulate(total_episodes, total_test_episodes)
-        values.append(TDLearningRes(alpha, gamma_param, td_res.mean_reward,
-                                    td_res.mean_step, td_res.test_mean_rewards))
+
+    alpha_gamma = list(zip(*tuple(product(alpha, gammas))))
+    alphas = alpha_gamma[0]
+    gammas = alpha_gamma[1]
+    envs = [copy.deepcopy(env) for _ in range(len(alphas))]
+    policies = [copy.deepcopy(policy) for _ in range(len(alphas))]
+    is_learnings = repeat(is_learning, len(alphas))
+    action_spaces = repeat(action_space, len(alphas))
+    total_episodes_values = repeat(total_episodes, len(alphas))
+    total_test_episodes_values = repeat(total_test_episodes, len(alphas))
+    td_learning_cls = repeat(td_learning_cls, len(alphas))
+
+    with Pool(num_workers) as workers:
+        values.extend(workers.starmap(simulate, zip(td_learning_cls, alphas, gammas, envs, policies,
+                                                    is_learnings, action_spaces, total_episodes_values, total_test_episodes_values)))
+
     return values
 
 
@@ -188,18 +214,18 @@ def plot_stat(alpha_values: np.ndarray, gamma_values: np.ndarray, train_stat: Li
     return train_fig, training_process_fig, test_fig
 
 
-def evaluate_td_learning(alpha_values: np.ndarray, gamma_values: np.ndarray, epsilon: float,
-                         num_train_episodes: int, num_test_episodes: int, learning_cls=QLearningSimulation):
+def evaluate_td_learning(*, alpha_values: np.ndarray, gamma_values: np.ndarray, epsilon: float,
+                         num_train_episodes: int, num_test_episodes: int, env, learning_cls=QLearningSimulation, action_space=Action):
     q_function = QTableDict()
 
     policy = EpsilonGreedyPolicy(q_function, epsilon=epsilon)
 
     train_stat = generate_stat(learning_cls, gamma_values, alpha_values,
-                               num_train_episodes, num_test_episodes, q_function, policy, is_learning=True)
+                               num_train_episodes, num_test_episodes, policy, is_learning=True, env=env, action_space=action_space)
 
     policy = EpsilonGreedyPolicy(q_function, epsilon=0)
 
     test_stat = generate_stat(learning_cls, gamma_values, alpha_values,
-                              num_train_episodes, None, q_function, policy, is_learning=False)
+                              num_train_episodes, None, policy, is_learning=False, env=env, action_space=action_space)
 
-    return train_stat, test_stat, q_function
+    return train_stat, test_stat

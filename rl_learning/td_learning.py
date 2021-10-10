@@ -3,26 +3,28 @@ import random
 import numpy as np
 from collections import namedtuple
 from abc import ABC, abstractmethod
+import logging
 
-import tqdm
 from gym.envs.toy_text import BlackjackEnv
 
+import log_set
 from .utils import Action, QTableDict
 
 TDLearningRes = namedtuple("TDLearningRes", ["mean_reward", "mean_step", "test_mean_rewards"])
 
 
 class TDLearning(ABC):
-    def __init__(self, env: BlackjackEnv, policy, q_table: QTableDict, **kwargs):
+    def __init__(self, env: BlackjackEnv, policy, q_table: QTableDict, action_space=Action, **kwargs):
         self._env = env
         self._policy = policy
-        self._init_qtable(q_table)
+        self._action_space = action_space
         self._q_table = q_table
         self._is_learning = kwargs["is_learning"]
+        self._logger = logging.getLogger("simulation")
 
     def _init_qtable(self, q_table: QTableDict):
-        for action in (Action.hit, Action.stick):
-            for ace in (0, 1):
+        for action in tuple(self._action_space):
+            for ace in (False, True):
                 for dealer_open_card in range(1, 11):
                     for player_sum in range(2, 32):
                         q_table.set_value(
@@ -53,11 +55,15 @@ class TDLearning(ABC):
         return total_rewards, total_steps
 
     def simulate(self, num_episodes: int, num_policy_exp: Optional[int] = None) -> TDLearningRes:
+        self._init_qtable(self._q_table)
+
         all_rewards = []
         step_counts = []
         test_rewards = []
 
-        for _ in tqdm.trange(num_episodes):
+        print_every = num_episodes // 10
+
+        for episode in range(num_episodes):
             self._is_learning = True
             reward, steps = self._generate_episode()
             all_rewards.append(reward)
@@ -73,12 +79,15 @@ class TDLearning(ABC):
 
                 test_rewards.append(np.mean(exp_rewards))
 
+            if (episode + 1) % print_every == 0:
+                self._logger.info(f"Progress: {episode / num_episodes:.2%}")
+
         return TDLearningRes(np.mean(all_rewards), np.mean(step_counts), np.array(test_rewards))
 
 
 class QLearningSimulation(TDLearning):
-    def __init__(self, env: BlackjackEnv, policy, q_table: QTableDict, **kwargs):
-        super().__init__(env, policy, q_table, **kwargs)
+    def __init__(self, env: BlackjackEnv, policy, q_table: QTableDict,  action_space=Action, **kwargs):
+        super().__init__(env, policy, q_table, action_space=action_space, **kwargs)
         self._alpha = kwargs["alpha"]
         self._gamma = kwargs["gamma"]
 
@@ -91,8 +100,8 @@ class QLearningSimulation(TDLearning):
 
 
 class Sarsa(TDLearning):
-    def __init__(self, env: BlackjackEnv, policy, q_table: QTableDict, **kwargs):
-        super().__init__(env, policy, q_table, **kwargs)
+    def __init__(self, env: BlackjackEnv, policy, q_table: QTableDict, action_space=Action, **kwargs):
+        super().__init__(env, policy, q_table, action_space=action_space, **kwargs)
         self._alpha = kwargs["alpha"]
         self._gamma = kwargs["gamma"]
 

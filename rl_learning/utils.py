@@ -2,9 +2,17 @@ import enum
 from collections import UserDict
 
 
+@enum.unique
 class Action(enum.IntEnum):
     hit = 1
     stick = 0
+
+
+@enum.unique
+class ExtendedAction(enum.IntEnum):
+    stick = 0
+    hit = 1
+    double = 2
 
 
 class QTableDict(UserDict):
