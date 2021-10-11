@@ -147,6 +147,7 @@ def generate_stat(td_learning_cls, gammas: np.ndarray, alpha: np.ndarray,
     alpha_gamma = list(zip(*tuple(product(alpha, gammas))))
     alphas = alpha_gamma[0]
     gammas = alpha_gamma[1]
+    del alpha_gamma
     envs = [copy.deepcopy(env) for _ in range(len(alphas))]
     policies = [copy.deepcopy(policy) for _ in range(len(alphas))]
     is_learnings = repeat(is_learning, len(alphas))

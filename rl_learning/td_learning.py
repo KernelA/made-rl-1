@@ -4,17 +4,18 @@ import numpy as np
 from collections import namedtuple
 from abc import ABC, abstractmethod
 import logging
+from itertools import product
 
-from gym.envs.toy_text import BlackjackEnv
 
 import log_set
 from .utils import Action, QTableDict
+from .black_jask_modified import BaseBlackjackEnv
 
 TDLearningRes = namedtuple("TDLearningRes", ["mean_reward", "mean_step", "test_mean_rewards"])
 
 
 class TDLearning(ABC):
-    def __init__(self, env: BlackjackEnv, policy, q_table: QTableDict, action_space=Action, **kwargs):
+    def __init__(self, env: BaseBlackjackEnv, policy, q_table: QTableDict, action_space=Action, **kwargs):
         self._env = env
         self._policy = policy
         self._action_space = action_space
@@ -24,11 +25,9 @@ class TDLearning(ABC):
 
     def _init_qtable(self, q_table: QTableDict):
         for action in tuple(self._action_space):
-            for ace in (False, True):
-                for dealer_open_card in range(1, 11):
-                    for player_sum in range(2, 32):
-                        q_table.set_value(
-                            (player_sum, dealer_open_card, ace), action, random.uniform(-1, 1))
+            space = self._env.observation_space_values()
+            for state in product(*space.values()):
+                q_table.set_value(state, action, random.uniform(-1, 1))
 
     @abstractmethod
     def _update_q_function(self, old_state, action: int, new_state, reward: float, new_action: int):
@@ -48,8 +47,8 @@ class TDLearning(ABC):
             state, reward, done, _ = self._env.step(action)
 
             total_rewards += reward
-            total_steps += 1
 
+            total_steps += 1
             self._update_q_function(old_state, action, state, reward, None)
 
         return total_rewards, total_steps
@@ -86,7 +85,7 @@ class TDLearning(ABC):
 
 
 class QLearningSimulation(TDLearning):
-    def __init__(self, env: BlackjackEnv, policy, q_table: QTableDict,  action_space=Action, **kwargs):
+    def __init__(self, env: BaseBlackjackEnv, policy, q_table: QTableDict,  action_space=Action, **kwargs):
         super().__init__(env, policy, q_table, action_space=action_space, **kwargs)
         self._alpha = kwargs["alpha"]
         self._gamma = kwargs["gamma"]
@@ -100,7 +99,7 @@ class QLearningSimulation(TDLearning):
 
 
 class Sarsa(TDLearning):
-    def __init__(self, env: BlackjackEnv, policy, q_table: QTableDict, action_space=Action, **kwargs):
+    def __init__(self, env: BaseBlackjackEnv, policy, q_table: QTableDict, action_space=Action, **kwargs):
         super().__init__(env, policy, q_table, action_space=action_space, **kwargs)
         self._alpha = kwargs["alpha"]
         self._gamma = kwargs["gamma"]
@@ -130,8 +129,8 @@ class Sarsa(TDLearning):
             action = self._policy.action(state)
 
             total_rewards += reward
-            total_steps += 1
 
+            total_steps += 1
             self._update_q_function(old_state, old_action, state, reward, action)
 
         return total_rewards, total_steps
