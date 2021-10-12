@@ -1,3 +1,4 @@
+from os import stat
 from typing import Tuple, Optional
 import random
 import numpy as np
@@ -7,11 +8,12 @@ import logging
 from itertools import product
 
 
-import log_set
 from .utils import Action, QTableDict
 from .black_jask_modified import BaseBlackjackEnv
+from .stat import StreamignMean
 
-TDLearningRes = namedtuple("TDLearningRes", ["mean_reward", "mean_step", "test_mean_rewards"])
+TDLearningRes = namedtuple(
+    "TDLearningRes", ["mean_reward", "mean_step", "test_mean_rewards", "test_episodes"])
 
 
 class TDLearning(ABC):
@@ -27,7 +29,17 @@ class TDLearning(ABC):
         for action in tuple(self._action_space):
             space = self._env.observation_space_values()
             for state in product(*space.values()):
-                q_table.set_value(state, action, random.uniform(-1, 1))
+                reward = random.uniform(-1, 1)
+
+                if state[0] == 21:
+                    if action == Action.stick:
+                        reward = 1
+                    elif action == Action.hit:
+                        reward = -1
+                    else:
+                        reward = 2
+
+                q_table.set_value(state, action, reward)
 
     @abstractmethod
     def _update_q_function(self, old_state, action: int, new_state, reward: float, new_action: int):
@@ -56,32 +68,36 @@ class TDLearning(ABC):
     def simulate(self, num_episodes: int, num_policy_exp: Optional[int] = None) -> TDLearningRes:
         self._init_qtable(self._q_table)
 
-        all_rewards = []
-        step_counts = []
         test_rewards = []
+        test_episode = []
+
+        mean_train_reward = StreamignMean()
+        mean_step = StreamignMean()
 
         print_every = num_episodes // 10
+        compute_every = 2
 
         for episode in range(num_episodes):
             self._is_learning = True
             reward, steps = self._generate_episode()
-            all_rewards.append(reward)
-            step_counts.append(steps)
+            mean_train_reward.add_value(reward)
+            mean_step.add_value(steps)
 
-            if num_policy_exp is not None:
+            if num_policy_exp is not None and episode % compute_every == 0:
                 self._is_learning = False
-                exp_rewards = []
+                exp_rewards = StreamignMean()
 
                 for _ in range(num_policy_exp):
                     reward, steps = self._generate_episode()
-                    exp_rewards.append(reward)
+                    exp_rewards.add_value(reward)
 
-                test_rewards.append(np.mean(exp_rewards))
+                test_rewards.append(exp_rewards.mean())
+                test_episode.append(episode)
 
             if (episode + 1) % print_every == 0:
                 self._logger.info(f"Progress: {episode / num_episodes:.2%}")
 
-        return TDLearningRes(np.mean(all_rewards), np.mean(step_counts), np.array(test_rewards))
+        return TDLearningRes(mean_train_reward.mean(), mean_step.mean(), np.array(test_rewards), np.array(test_episode))
 
 
 class QLearningSimulation(TDLearning):

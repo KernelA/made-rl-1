@@ -142,6 +142,7 @@ class BlackjackWithShuffle(BlackjackEnvDouble):
         self._min_decks_before_shuffle = min_decks_before_shuffle
         # Shift to map -4, -3, ... -> 0, 1, ...
         self._counting_shift = 4
+        self._is_shuffle = False
         super().__init__(natural=natural)
 
         self._real_deck = self._get_deck()
@@ -173,8 +174,9 @@ class BlackjackWithShuffle(BlackjackEnvDouble):
     def _draw_card(self, np_random):
         card = self._real_deck.pop()
         self._card_counting += self.CARD_WEIGHTS[card]
-        if len(self._real_deck) < self._min_decks_before_shuffle:
+        if len(self._real_deck) < self._min_decks_before_shuffle and not self._is_shuffle:
             random.shuffle(self._real_deck, self._random)
+            self._is_shuffle = True
         return card
 
     def _get_obs(self):
@@ -186,6 +188,7 @@ class BlackjackWithShuffle(BlackjackEnvDouble):
 
     def reset(self):
         self._card_counting = 0
+        self._is_shuffle = False
         self._real_deck = self._get_deck()
         res = super().reset()
         return res

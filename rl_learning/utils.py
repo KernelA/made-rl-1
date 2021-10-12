@@ -1,5 +1,6 @@
 import enum
 from collections import UserDict
+from typing import Dict
 
 
 @enum.unique
@@ -28,8 +29,8 @@ class QTableDict(UserDict):
         else:
             self.data[state][action] = value
 
-    def get_actions(self, state):
+    def get_actions(self, state) -> Dict[int, float]:
         return self.data[state]
 
-    def get_value(self, state, action):
+    def get_value(self, state, action) -> float:
         return self.data[state][action]

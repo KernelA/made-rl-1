@@ -15,7 +15,7 @@ from rl_learning.utils import Action
 
 
 TDLearningRes = namedtuple(
-    "TDLearningRes", ["alpha", "gamma", "mean_reward", "mean_step", "test_mean_rewards", "q_function"])
+    "TDLearningRes", ["alpha", "gamma", "mean_reward", "mean_step", "test_mean_rewards", "test_episodes", "q_function"])
 
 
 def make_grid(x_axis_values, y_axis_values, x_values,
@@ -112,8 +112,8 @@ def plot_v_function(data: pd.DataFrame, title: str):
 
     player_axis_start = 2
     dealer_axis_start = 1
-    player_sum = np.arange(player_axis_start, 21 + 2)
-    dealer_show = np.arange(dealer_axis_start, 10 + 2)
+    player_sum = np.arange(player_axis_start, 21 + 1)
+    dealer_show = np.arange(dealer_axis_start, 10 + 1)
 
     _, _, rewards_data = make_grid(player_sum, dealer_show, data["player_sum"].to_numpy(
     ), data["dealer_open_card"].to_numpy(), data["reward"].to_numpy())
@@ -136,12 +136,12 @@ def simulate(td_learning_cls, alpha: float, gamma: float, env, policy, is_learni
     td_res = td_learning.simulate(total_episodes, total_test_episodes)
 
     return TDLearningRes(alpha, gamma, td_res.mean_reward,
-                         td_res.mean_step, td_res.test_mean_rewards, q_function)
+                         td_res.mean_step, td_res.test_mean_rewards,  td_res.test_episodes, q_function)
 
 
 def generate_stat(td_learning_cls, gammas: np.ndarray, alpha: np.ndarray,
                   total_episodes: int, total_test_episodes: Optional[int], policy, is_learning: bool,
-                  env, action_space, num_workers: int = 4) -> List[TDLearningRes]:
+                  env, action_space, num_workers: int = 6) -> List[TDLearningRes]:
     values = []
 
     alpha_gamma = list(zip(*tuple(product(alpha, gammas))))
@@ -184,12 +184,11 @@ def plot_td_learning_stat(alpha_axis: np.ndarray, gamma_axis: np.ndarray, result
     return fig
 
 
-def plot_training_process(rewards: np.ndarray):
+def plot_training_process(episodes: np.ndarray, rewards: np.ndarray):
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
     _, trend = sm.tsa.filters.hpfilter(rewards)
-    episodes = tuple(range(len(rewards)))
     ax.plot(episodes, rewards)
     ax.plot(episodes, trend, label="Тренд", c="red")
     ax.set_title("Средняя награда во время обучения")
@@ -207,7 +206,8 @@ def plot_stat(alpha_values: np.ndarray, gamma_values: np.ndarray, train_stat: Li
 
     best_stat = max(train_stat, key=lambda x: x.mean_reward)
 
-    training_process_fig = plot_training_process(best_stat.test_mean_rewards)
+    training_process_fig = plot_training_process(
+        best_stat.test_episodes, best_stat.test_mean_rewards)
 
     test_fig = plot_td_learning_stat(
         alpha_values, gamma_values, test_stat, "Средняя награда при использовании обученной стратегии")
