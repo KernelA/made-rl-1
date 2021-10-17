@@ -1,12 +1,12 @@
 import enum
 from collections import UserDict
-from typing import Dict
+from typing import Any, Dict, Tuple
 
 
 @enum.unique
 class Action(enum.IntEnum):
-    hit = 1
     stick = 0
+    hit = 1
 
 
 @enum.unique
@@ -23,7 +23,7 @@ class QTableDict(UserDict):
     def __init__(self):
         super().__init__(dict())
 
-    def set_value(self, state, action, value):
+    def set_value(self, state: Tuple[Any], action, value: float):
         if state not in self.data:
             self.data[state] = {action: value}
         else:

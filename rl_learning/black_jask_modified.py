@@ -108,28 +108,43 @@ class BlackjackEnvDouble(BaseBlackjackEnv):
         self._reward_multiplier = 1
         return state
 
+    def _player_step(self):
+        self.player.append(draw_card(self.np_random))
+        if is_bust(self.player):
+            done = True
+            reward = -1.
+        else:
+            done = False
+            reward = 0.
+
+        return done, reward
+
+    def _dealer_step(self):
+        done = True
+
+        while sum_hand(self.dealer) < 17:
+            self.dealer.append(draw_card(self.np_random))
+        reward = cmp(score(self.player), score(self.dealer))
+        if self.natural and is_natural(self.player) and reward == 1.:
+            reward = 1.5
+
+        return done, reward
+
     def step(self, action):
         assert self.action_space.contains(action)
 
         if action == ExtendedAction.double:
             self._reward_multiplier *= 2
-            action = ExtendedAction.hit
+            done, reward = self._player_step()
 
-        if action == ExtendedAction.hit:  # hit: add a card to players hand and return
-            self.player.append(draw_card(self.np_random))
-            if is_bust(self.player):
-                done = True
-                reward = -1.
-            else:
-                done = False
-                reward = 0.
+            if not done:
+                done, reward = self._dealer_step()
+
+        elif action == ExtendedAction.hit:  # hit: add a card to players hand and return
+            done, reward = self._player_step()
         else:  # stick: play out the dealers hand, and score
-            done = True
-            while sum_hand(self.dealer) < 17:
-                self.dealer.append(draw_card(self.np_random))
-            reward = cmp(score(self.player), score(self.dealer))
-            if self.natural and is_natural(self.player) and reward == 1.:
-                reward = 1.5
+            done, reward = self._dealer_step()
+
         return self._get_obs(), self._reward_multiplier * reward, done, {}
 
 
