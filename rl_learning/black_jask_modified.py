@@ -42,13 +42,14 @@ class BaseBlackjackEnv(gym.Env):
     http://incompleteideas.net/book/the-book-2nd.html
     """
 
-    def __init__(self, natural=False):
+    def __init__(self, seed: int, natural=False):
         self.action_space = spaces.Discrete(2)
         self.observation_space = spaces.Tuple((
             spaces.Discrete(32),
             spaces.Discrete(11),
             spaces.Discrete(2)))
-        self.seed()
+        self.seed_value = seed
+        self.seed(seed)
 
         # Flag to payout 1.5 on a "natural" blackjack win, like casino rules
         # Ref: http://www.bicyclecards.com/how-to-play/blackjack/
@@ -98,8 +99,8 @@ class BaseBlackjackEnv(gym.Env):
 
 
 class BlackjackEnvDouble(BaseBlackjackEnv):
-    def __init__(self, natural=False):
-        super().__init__(natural=natural)
+    def __init__(self, seed: int, natural=False):
+        super().__init__(seed=seed, natural=natural)
         self.action_space = spaces.Discrete(3)
         self._reward_multiplier = 1
 
@@ -153,12 +154,12 @@ class BlackjackWithShuffle(BlackjackEnvDouble):
     """
     CARD_WEIGHTS = {1: -1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 0, 8: 0, 9: 0, 10: -1}
 
-    def __init__(self, min_decks_before_shuffle: int, natural=False):
+    def __init__(self, seed: int, min_decks_before_shuffle: int, natural=False):
         self._min_decks_before_shuffle = min_decks_before_shuffle
-        # Shift to map -4, -3, ... -> 0, 1, ...
-        self._counting_shift = 4
+        # Shift to map -5, -3, ... -> 0, 1, ...
+        self._counting_shift = 5
         self._is_shuffle = False
-        super().__init__(natural=natural)
+        super().__init__(seed=seed, natural=natural)
 
         self._real_deck = self._get_deck()
         self._card_counting = 0
@@ -168,9 +169,9 @@ class BlackjackWithShuffle(BlackjackEnvDouble):
         for index in range(len(self.observation_space)):
             new_obs_space.append(self.observation_space[index])
 
-        self._counting_space_size = 14
+        self._counting_space_size = 15
 
-        # Computation space -4, -3, ..., 8
+        # Computation space -5, -3, ..., 8
         new_obs_space.append(Discrete(self._counting_space_size))
 
         self.observation_space = spaces.Tuple(new_obs_space)

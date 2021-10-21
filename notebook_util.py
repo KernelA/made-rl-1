@@ -1,8 +1,9 @@
-from typing import Tuple, List, Optional
+from typing import Iterable, Tuple, List, Optional
 from collections import namedtuple
 from itertools import product, repeat
 from multiprocessing import Pool
 import copy
+import logging
 
 from matplotlib import pyplot as plt
 import numpy as np
@@ -11,11 +12,11 @@ import pandas as pd
 
 
 from rl_learning import QTableDict, EpsilonGreedyPolicy, QLearningSimulation
-from rl_learning.utils import Action
+from rl_learning.utils import Action, get_seed
 
 
 TDLearningRes = namedtuple(
-    "TDLearningRes", ["alpha", "gamma", "mean_reward", "mean_step", "test_mean_rewards", "test_episodes", "q_function"])
+    "TDLearningRes", ["alpha", "gamma", "mean_reward", "mean_step", "test_mean_rewards", "test_episodes", "q_function", "policy_seed", "env_seed"])
 
 
 def make_grid(x_axis_values, y_axis_values, x_values,
@@ -96,7 +97,7 @@ def heatmap(data, row_labels, col_labels, ax=None,
 
     for i in range(len(row_labels)):
         for j in range(len(col_labels)):
-            text = ax.text(j, i, f"{data[i, j]:.2f}", ha="center", va="center", color="black")
+            text = ax.text(j, i, f"{data[i, j]:.4f}", ha="center", va="center", color="black")
 
     ax.set_xticks(np.arange(data.shape[1] + 1) - 0.5, minor=True)
     ax.set_yticks(np.arange(data.shape[0] + 1) - 0.5, minor=True)
@@ -129,19 +130,24 @@ def plot_v_function(data: pd.DataFrame, title: str):
 
 
 def simulate(td_learning_cls, alpha: float, gamma: float, env, policy, is_learning: bool,
-             action_space, total_episodes: int, total_test_episodes: int) -> TDLearningRes:
+             action_space, total_episodes: int, total_test_episodes: int, num_run: int, total_runs: int) -> TDLearningRes:
+    logger = logging.getLogger()
     q_function = policy.q_function
     td_learning = td_learning_cls(env, policy, q_function, alpha=alpha,
                                   gamma=gamma, is_learning=is_learning, action_space=action_space)
     td_res = td_learning.simulate(total_episodes, total_test_episodes)
 
+    logger.info("Complete hyperparameter tuning %d of %d", num_run, total_runs)
+    logger.info("Alpha: %f Gamma: %f. Mean reward: %f", alpha, gamma, td_res.mean_reward)
+
     return TDLearningRes(alpha, gamma, td_res.mean_reward,
-                         td_res.mean_step, td_res.test_mean_rewards,  td_res.test_episodes, q_function)
+                         td_res.mean_step, td_res.test_mean_rewards, td_res.test_episodes,
+                         q_function, policy.seed, env.seed_value)
 
 
-def generate_stat(td_learning_cls, gammas: np.ndarray, alpha: np.ndarray,
+def generate_stat(td_learning_cls, gammas: Iterable[float], alpha: Iterable[float],
                   total_episodes: int, total_test_episodes: Optional[int], policy, is_learning: bool,
-                  env, action_space, num_workers: int = 6) -> List[TDLearningRes]:
+                  env, action_space, num_workers: int = 4) -> List[TDLearningRes]:
     values = []
 
     alpha_gamma = list(zip(*tuple(product(alpha, gammas))))
@@ -155,10 +161,16 @@ def generate_stat(td_learning_cls, gammas: np.ndarray, alpha: np.ndarray,
     total_episodes_values = repeat(total_episodes, len(alphas))
     total_test_episodes_values = repeat(total_test_episodes, len(alphas))
     td_learning_cls = repeat(td_learning_cls, len(alphas))
+    num_runs = range(1, len(alphas) + 1)
+    total_runs = repeat(len(alphas), len(alphas))
 
     with Pool(num_workers) as workers:
         values.extend(workers.starmap(simulate, zip(td_learning_cls, alphas, gammas, envs, policies,
-                                                    is_learnings, action_spaces, total_episodes_values, total_test_episodes_values)))
+                                                    is_learnings, action_spaces,
+                                                    total_episodes_values,
+                                                    total_test_episodes_values,
+                                                    num_runs,
+                                                    total_runs)))
 
     return values
 
@@ -174,8 +186,10 @@ def plot_td_learning_stat(alpha_axis: np.ndarray, gamma_axis: np.ndarray, result
 
     _, _, mean_reward = make_grid(alpha_axis, gamma_axis, alphas, gammas, mean_rewards)
 
+    def format(x):
+        return f"{x:.4f}"
     heatmap(mean_reward, row_labels=list(
-        map(lambda x: f"{x:.2f}", gamma_axis)), col_labels=list(map(str, alpha_axis)), ax=ax)
+        map(format, gamma_axis)), col_labels=list(map(format, alpha_axis)), ax=ax)
 
     ax.set_xlabel("Скорость обучения alpha")
     ax.set_ylabel("gamma")
@@ -191,9 +205,10 @@ def plot_training_process(episodes: np.ndarray, rewards: np.ndarray):
     _, trend = sm.tsa.filters.hpfilter(rewards)
     ax.plot(episodes, rewards)
     ax.plot(episodes, trend, label="Тренд", c="red")
-    ax.set_title("Средняя награда во время обучения")
+    ax.set_title("Изменение средней награды во время обучения")
     ax.set_xlabel("Номер эпизода")
     ax.set_ylabel("Средняя награда")
+    ax.grid(True)
     plt.legend()
 
     return fig
@@ -204,29 +219,74 @@ def plot_stat(alpha_values: np.ndarray, gamma_values: np.ndarray, train_stat: Li
     train_fig = plot_td_learning_stat(alpha_values, gamma_values,
                                       train_stat, "Средняя награда во время обучения")
 
-    best_stat = max(train_stat, key=lambda x: x.mean_reward)
-
-    training_process_fig = plot_training_process(
-        best_stat.test_episodes, best_stat.test_mean_rewards)
-
     test_fig = plot_td_learning_stat(
         alpha_values, gamma_values, test_stat, "Средняя награда при использовании обученной стратегии")
 
-    return train_fig, training_process_fig, test_fig
+    return train_fig, test_fig
 
 
 def evaluate_td_learning(*, alpha_values: np.ndarray, gamma_values: np.ndarray, epsilon: float,
-                         num_train_episodes: int, num_test_episodes: int, env, learning_cls=QLearningSimulation, action_space=Action):
+                         num_train_episodes: int, num_test_episodes: int, env, num_train_episodes_on_best_params: int, learning_cls=QLearningSimulation, action_space=Action,
+                         ) -> Tuple[List[TDLearningRes], List[TDLearningRes], TDLearningRes, TDLearningRes]:
+
+    logger = logging.getLogger()
+
+    logger.info("Train on hyperparameters")
+
     q_function = QTableDict()
 
-    policy = EpsilonGreedyPolicy(q_function, epsilon=epsilon)
+    policy = EpsilonGreedyPolicy(q_function, epsilon=epsilon, seed=get_seed())
 
     train_stat = generate_stat(learning_cls, gamma_values, alpha_values,
-                               num_train_episodes, num_test_episodes, policy, is_learning=True, env=env, action_space=action_space)
+                               num_train_episodes, -1, policy, is_learning=True, env=env, action_space=action_space)
 
-    policy = EpsilonGreedyPolicy(q_function, epsilon=0)
+    best_stat = max(train_stat, key=lambda x: np.mean(x.test_mean_rewards))
+    logger.info("Validate on the best hyperparameters alpha: %f gamma: %f",
+                best_stat.alpha, best_stat.gamma)
 
     test_stat = generate_stat(learning_cls, gamma_values, alpha_values,
                               num_train_episodes, None, policy, is_learning=False, env=env, action_space=action_space)
 
-    return train_stat, test_stat
+    logger.info("Train on best parameters with steps: %d alpha: %f gamma: %f",
+                num_train_episodes_on_best_params, best_stat.alpha, best_stat.gamma)
+    train_q_function = QTableDict()
+
+    policy = EpsilonGreedyPolicy(train_q_function, epsilon=epsilon, seed=best_stat.policy_seed)
+    env.seed(env.seed_value)
+
+    training_process = simulate(learning_cls, best_stat.alpha, best_stat.gamma,
+                                env, policy, is_learning=True, action_space=action_space,
+                                total_episodes=num_train_episodes_on_best_params, total_test_episodes=num_test_episodes, num_run=1, total_runs=1)
+
+    policy = EpsilonGreedyPolicy(train_q_function, epsilon=0.0, seed=best_stat.policy_seed)
+    # env.seed(env.seed_value)
+    logger.info("Validate on best parameters with steps: %d", num_train_episodes_on_best_params)
+    best_valid_stat = generate_stat(learning_cls, [best_stat.gamma], [best_stat.alpha],
+                                    num_train_episodes_on_best_params, None, policy, is_learning=False, env=env, action_space=action_space)[0]
+
+    return train_stat, test_stat, training_process, best_valid_stat
+
+
+def plot_final_stat(states: dict):
+    translate = {"base": "Базовое окружение", "double": "Окружение с удвоением",
+                 "counting": "Окружение с подсчётом карт", "q": "Q-обучение", "sarsa": "Sarsa"}
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    i = 0
+    objects = []
+    labels = []
+
+    for i, env in enumerate(states):
+        for algo, color, shift in zip(("q", "sarsa"), ("blue", "green"), (-0.2, 0.2)):
+            bar = plt.bar(i + shift, -states[env][algo].mean_reward, width=0.4, color=color)
+            if i == 0:
+                objects.append(bar)
+                labels.append(f"Алгоритм: {translate[algo]}")
+        i += 1
+    ax.set_xticks(tuple(range(len(states))))
+    ax.set_xticklabels(list(map(lambda x: translate[x], states)))
+    ax.legend(objects, labels)
+    ax.set_title("Средний доход умноженный на -1. Ближе к 0 лучше.")
+
+    return fig

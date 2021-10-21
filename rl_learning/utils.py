@@ -1,6 +1,8 @@
 import enum
 from collections import UserDict
 from typing import Any, Dict, Tuple
+import random
+import sys
 
 
 @enum.unique
@@ -14,6 +16,10 @@ class ExtendedAction(enum.IntEnum):
     stick = 0
     hit = 1
     double = 2
+
+
+def get_seed() -> int:
+    return random.randrange(sys.maxsize)
 
 
 class QTableDict(UserDict):
