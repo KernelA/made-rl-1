@@ -8,10 +8,12 @@ formatters:
     format: '%(asctime)s %(levelname)s %(processName)s %(module)s %(funcName)s %(message)s'
 handlers:
   console:
-    class: logging.StreamHandler
+    class: logging.FileHandler
     level: DEBUG
     formatter: default_console_process
-    stream: ext://sys.stdout
+    filename: logs.txt
+    mode: 'a'
+    encoding: 'utf-8'
 loggers:
   simulation:
     level: DEBUG

@@ -5,13 +5,14 @@ import tqdm
 from gym.envs.toy_text import BlackjackEnv
 
 
-class MonetCarloSimulation:
+class FirstVisitMonetCarloSimulation:
     def __init__(self, env: BlackjackEnv, policy):
         self._env = env
         self._strategy = policy
 
     def _generate_episode(self) -> Tuple[List, List, List]:
         states, actions, rewards = [], [], []
+
         state = self._env.reset()
 
         done = False
