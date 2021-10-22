@@ -139,3 +139,4 @@ cython_debug/
 
 .vscode/
 logs.txt
+.metals/
